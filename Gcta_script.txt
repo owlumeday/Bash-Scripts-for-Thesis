@@ -1,0 +1,144 @@
+#!/bin/bash
+
+cd ~/thesis/GWAS_DATA/
+
+#Directory to softwares
+PLINK="/cluster/projects/nn9891k/OLUMIDE/Array_MLA/plink"
+gcta="/cluster/projects/nn9891k/OLUMIDE/gcta-1.94.1-linux-kernel-3-x86_64/gcta-1.94.1"
+
+#Firstly, we copy gwas file over then merge all 29 chromosomes together to one
+
+for i in {1..29}
+do
+cp ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Imputation_for_Target_Population/GWAS_Data_chr${i}.* .
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Imputation_for_Target_Population/reference_allele_array_chr${i}.txt >> reference_allele_array
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Imputation_for_Target_Population/reference_allele_seq_chr${i}.txt >> reference_allele_seq
+echo "GWAS_Data_chr${i}" >> mergelist.txt
+done
+
+#rm *.nosex *.log
+
+
+#Merging all chromosomes together
+./plink --merge-list mergelist.txt --make-bed --chr-set 29 --out GWAS_Data_Merged_12 
+
+#Then i convert the 12 coding back to ACTG, to do this i need to extract Minor allele from VCF_file
+
+./plink --bfile ~/thesis/Seq_MLA/SeqNew/SeqCorrect --freq --chr-set 29 --allow-extra-chr --double-id --out SeqCorrect_ACTG_extracted
+cat SeqCorrect_ACTG_extracted.frq | awk 'NR > 1 {print $2,$3,$4}' > seq_ACTG
+
+
+cp seq_ACTG tmp_ACTG_coding
+cat GWAS_Data_Merged_12.bim | cut -f 2,5,6 > tmp_12_coding
+
+module load R/4.2.1-foss-2022a
+
+echo "tmp_12 <- read.table('tmp_12_coding', header = F)
+tmp_actg <- read.table('tmp_ACTG_coding', header = F)
+both <- merge(tmp_12, tmp_actg, by.x = 1, by.y = 1, all.x = T,sort=F)
+both[,2] <- 1
+both[,3] <- 2
+colnames(both) <- c('V2', 'A11', 'A12', 'V5', 'V6')
+write.table(both, 'UpdateAllele.txt', col.names = T, row.names = F, quote = F, sep = '\t')" > Merge_allele.R
+
+Rscript Merge_allele.R
+
+
+#This code updates the merged GWAS data to ACTG from 12 coding
+./plink --nonfounders --allow-no-sex --chr-set 29 --allow-extra-chr --bfile  GWAS_Data_Merged --update-alleles UpdateAllele.txt --make-bed --recode --out SeqImputedSNPs_ACGT
+
+#some cleanings 
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile SeqImputedSNPs_ACGT --hwe 1e-25 --make-bed --out  tmp1
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile tmp1 --maf 0.02 --freq --make-bed --out  tmp2
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile tmp2 --mind 0.05 --geno 0.05 --make-bed --out  FinalOut1_imp_ACGT_Filt
+rm tmp*
+
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile FinalOut1_imp_ACGT_Filt --pca 1500 --out  PCA
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile FinalOut1_imp_ACGT_Filt --het --out  het
+
+##### Plot this in R
+eigenvec <- read.table('Imputed/PCA.eigenvec',header=F,stringsAsFactors = F)[,c(2:15)]
+eigenval <- read.table('Imputed/PCA.eigenval',header=F,stringsAsFactors = F)
+eigenval$precent <- round((eigenval$V1/sum(eigenval$V1))*100,3)
+
+plot(x=eigenvec$V3,y=eigenvec$V4,xlim = c(-0.05,0.05),ylim = c(-0.06,0.085),
+     pch=20,xlab=paste('PCA 1 (',eigenval[1,2],'%)'),ylab=paste('PCA 2 (',eigenval[2,2],'%)'),
+     cex=2.5,cex.lab=1.2, frame.plot=FALSE, cex.axis=1.2,font=2,
+     col="green",
+     main="",cex.main=2)
+
+
+################### CREAT Phenotype, Co-variable and Fixed effect files
+Pheno<-read.table("/cluster/projects/nn9891k/OLUMIDE/Mowi_Lice_2017.txt", header=TRUE,stringsAsFactors=FALSE,sep = "\t")
+Pheno$logLice<-log1p(Pheno$SEALICE)
+Pheno$V13 <- paste0(Pheno$COUNTER,"_",Pheno$TANK)
+colnames(Pheno)
+Pheno<-Pheno[complete.cases(Pheno$SEALICE),]
+
+PCA<-read.table("PCA.eigenvec",header=F,stringsAsFactors = F)
+Pheno.Gen<-merge(Pheno,PCA[,c(2,3:4)],by=1)
+
+write.table(Pheno.Gen[,c(1,1,12,5)],"Pheno.phen",sep="\t",quote = F,col.names = F,row.names = F)
+write.table(Pheno.Gen[,c(1,1,6,14,15)],"Pheno.qCovar",sep="\t",quote = F,col.names = F,row.names = F)
+write.table(Pheno.Gen[,c(1,1,6)],"Pheno.qCovarbw",sep="\t",quote = F,col.names = F,row.names = F)
+write.table(Pheno.Gen[,c(1,1,13)],"Pheno.Covar",sep="\t",quote = F,col.names = F,row.names = F)
+
+
+#_____________________________SEQ DATA____________________________________#
+############################# RUNNING GCTA
+#cd /cluster/projects/nn9891k/OLUMIDE/GWAS_DATA/GWAS_MLA/
+############################# CREAT A GRM
+./gcta --bfile FinalOut1_imp_ACGT_Filt --autosome-num 35 \
+      --thread-num 20 --make-grm --maf 0.05 --out FinalOut1_imp_ACGT_FiltHet
+
+
+######################## ESTIMATES OF GENETIC PARAMETER UNIVARIATE ANIMAL MODEL
+./gcta --reml \
+      --reml-maxit 1500 --pheno Pheno.phen --mpheno 1 \
+      --thread-num 20 --grm FinalOut1_imp_ACGT_FiltHet \
+      --covar Pheno.Covar \
+      --qcovar Pheno.qCovarbw \
+      --out FinalOut1_imp_ACGT_FiltHet
+
+######################## GWAS WITH LINEAR MIXED ANIMAL MODEL
+./gcta-1.94.1 --mlma \
+      --bfile FinalOut1_imp_ACGT_Filt --autosome-num 35 \
+      --pheno Pheno.phen --mpheno 1 \
+      --thread-num 20 --grm FinalOut1_imp_ACGT_FiltHet \
+      --covar Pheno.Covar \
+      --qcovar Pheno.qCovarbw \
+      --out FinalOut1_imp_ACGT_FiltHet_new
+
+
+
+#__________________________________ARRAY DATA___________________________________#
+# just 2017 individuals
+
+cat ~/thesis/Array_MLA/ArrayNew/ArrayCorrect.fam | grep ^2017 | cut -f 1-2 -d ' ' > population_2017.txt
+
+#Here i toook note of the 2017 population alone
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile ~/thesis/Array_MLA/ArrayNew/ArrayCorrect --keep population_2017.txt --hwe 1e-25 --make-bed --out  tmp1
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile tmp1 --maf 0.02 --freq --make-bed --out  tmp2
+./plink --nonfounders --allow-no-sex --chr-set 31 --allow-extra-chr --bfile tmp2 --mind 0.05 --geno 0.05 --make-bed --out  FinalOut_Array_ACGT
+
+
+
+############################# CREAT A Genomic Relationship Matrix
+./gcta --bfile FinalOut_Array_ACGT --autosome-num 35 \
+      --thread-num 20 --make-grm --maf 0.05 --out FinalOut_Array_ACGT_FiltHet
+######################## ESTIMATES OF GENOMIC PARAMETER UNIVARIATE ANIMAL MODEL
+./gcta --reml \
+      --reml-maxit 1500 --pheno Pheno.phen --mpheno 1 \
+      --thread-num 20 --grm FinalOut_Array_ACGT_FiltHet \
+      --covar Pheno.Covar \  #covar is a fixed effect
+      --qcovar Pheno.qCovarbw \ #qcovar is a real covariate..numeric
+      --out FinalOut_Array_ACGT_FiltHet
+
+######################## GWAS WITH LINEAR MIXED ANIMAL MODEL
+./gcta --mlma \
+      --bfile FinalOut_Array_ACGT --autosome-num 35 \
+      --pheno Pheno.phen --mpheno 1 \
+      --thread-num 20 --grm FinalOut_Array_ACGT_FiltHet \
+      --covar Pheno.Covar \
+      --qcovar Pheno.qCovarbw \
+      --out FinalOut_Array_ACGT_FiltHet_new

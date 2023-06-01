@@ -1,0 +1,39 @@
+rm chromosome SNP_Based_Imputation_Average_withped_AllChr SNP_Based_Imputation_Average_AllChr AnimalBased_ImputedSNPs_Imputation_Average_withped_AllChr \
+AnimalBased_ImputedSNPs_Imputation_Average_AllChr SNP_Based_Imputation_Average_greater_than_0.6_AllChr_withped SNP_Based_Imputation_Average_greater_than_0.6_AllChr \
+Number_of_ArraySNPs_on_AllChr_withped Number_of_ArraySNPs_on_AllChr Number_of_ImputedSNPs_greater_than_0.6_AllChr_withped \
+Number_of_ImputedSNPs_greater_than_0.6_AllChr temp
+
+
+for i in {1..29}
+do
+echo "WITH PED"
+
+echo "Ssa_${i}" >> chromosome
+cat ~/thesis/Accuracy/Imputation_Accuracy_withped_chr_${i}/Accuracies/SNP_Based_Imputation_Average_chr${i} >> SNP_Based_Imputation_Average_withped_AllChr
+cat ~/thesis/Accuracy/Imputation_Accuracy_withped_chr_${i}/Accuracies/AnimalBased_ImputedSNPs_Imputation_Average_chr${i} >> AnimalBased_ImputedSNPs_Imputation_Average_withped_AllChr
+cat ~/thesis/Accuracy/Imputation_Accuracy_withped_chr_${i}/Accuracies/SNP_Based_Imputation_Average_greater_than_0.6 >> SNP_Based_Imputation_Average_greater_than_0.6_AllChr_withped
+cut -f 1 -d " " ~/thesis/Accuracy/Imputation_Accuracy_withped_chr_${i}/Accuracies/Number_of_ArraySNPs_on_chr${i} >> Number_of_ArraySNPs_on_AllChr_withped
+cat ~/thesis/Accuracy/Imputation_Accuracy_withped_chr_${i}/Accuracies/Number_of_ImputedSNPs_greater_than_0.6_on_chr${i} >> Number_of_ImputedSNPs_greater_than_0.6_AllChr_withped
+
+
+echo "WITHOUT PED"
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Accuracies/SNP_Based_Imputation_Average_chr${i} >> SNP_Based_Imputation_Average_AllChr
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Accuracies/AnimalBased_ImputedSNPs_Imputation_Average_chr${i} >> AnimalBased_ImputedSNPs_Imputation_Average_AllChr
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Accuracies/SNP_Based_Imputation_Average_greater_than_0.6 >> SNP_Based_Imputation_Average_greater_than_0.6_AllChr
+cut -f 1 -d " " ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Accuracies/Number_of_ArraySNPs_on_chr${i} >> Number_of_ArraySNPs_on_AllChr
+cat ~/thesis/Accuracy/Imputation_Accuracy_chr_${i}/Accuracies/Number_of_ImputedSNPs_greater_than_0.6_on_chr${i} >> Number_of_ImputedSNPs_greater_than_0.6_AllChr
+
+done
+
+
+echo "chromosome  SNP_Based_Imputation_Average_withped SNP_Based_Imputation_Average AnimalBased_ImputedSNPs_Imputation_Average_withped \
+AnimalBased_ImputedSNPs_Imputation_Average SNP_Based_Imputation_Average_greater_than_0.6_withped SNP_Based_Imputation_Average_greater_than_0.6 \
+Number_of_ArraySNPs_withped Number_of_ArraySNPs Number_of_ImputedSNPs_greater_than_0.6_withped Number_of_ImputedSNPs_greater_than_0.6" > headers
+
+
+paste -d " " chromosome SNP_Based_Imputation_Average_withped_AllChr SNP_Based_Imputation_Average_AllChr AnimalBased_ImputedSNPs_Imputation_Average_withped_AllChr \
+AnimalBased_ImputedSNPs_Imputation_Average_AllChr SNP_Based_Imputation_Average_greater_than_0.6_AllChr_withped SNP_Based_Imputation_Average_greater_than_0.6_AllChr \
+Number_of_ArraySNPs_on_AllChr_withped Number_of_ArraySNPs_on_AllChr Number_of_ImputedSNPs_greater_than_0.6_AllChr_withped \
+Number_of_ImputedSNPs_greater_than_0.6_AllChr > temp
+
+cat headers temp > RESULT_TABLEs.txt
